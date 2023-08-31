@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Integrity Chain</title>
+  </head>
+  <body>
+    <h1>Login</h1>
+  
+    <form method="POST" action="">
+      {{ form.hidden_tag() }} 
+      {{ form.username }} 
+      {{ form.password }} 
+      {{ form.submit }}
+    </form>
+    
+    <li>
+      <a href="{{url_for('register')}}">Don't Have an account? Register here</a>
+    </li>
+  </body>
+</html>
