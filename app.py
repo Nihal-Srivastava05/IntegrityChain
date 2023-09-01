@@ -7,12 +7,13 @@ from wtforms import StringField, PasswordField, SubmitField
 from wtforms.validators import InputRequired, Length, ValidationError
 
 from flask_bcrypt import Bcrypt
+from integritychain import Integrity, IntegrityChain
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret-key-123'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
 
-db = SQLAlchemy(app)
+db = SQLAlchemy()
 db.init_app(app)
 bcrypt = Bcrypt(app)
 
@@ -20,14 +21,25 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
-@login_manager.user_loader
-def load_user(user_id):
-    return User.query.get(int(user_id))
+## Models ## 
 
 class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(20), nullable=False, unique=True)
     password = db.Column(db.String(80), nullable=False)
+
+class Blockchain(db.Model):
+    number = db.Column(db.Integer, primary_key=True)
+    hash = db.Column(db.String(80), nullable=False)
+    previous_hash = db.Column(db.String(80), nullable=False)
+    data = db.Column(db.String(80), nullable=False)
+    nonce = db.Column(db.Integer)
+
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))
+
+## Forms ## 
 
 class RegisterForm(FlaskForm):
     username = StringField(validators=[InputRequired(), Length(min=4, max=20)], render_kw={'placeholder': "Username"})
@@ -40,7 +52,7 @@ class RegisterForm(FlaskForm):
         if existing_user_username:
             raise ValidationError(
                 'That username already exists. Please choose a different one.')
-        
+
 class LoginForm(FlaskForm):
     username = StringField(validators=[
                            InputRequired(), Length(min=4, max=20)], render_kw={"placeholder": "Username"})
@@ -49,6 +61,50 @@ class LoginForm(FlaskForm):
                              InputRequired(), Length(min=8, max=20)], render_kw={"placeholder": "Password"})
 
     submit = SubmitField('Login')
+
+## DB Tools ##
+
+def get_blockchain():
+    integritychain = IntegrityChain()
+    blockchain_sql = Blockchain.query.all()
+    for block in blockchain_sql:
+        integritychain.add(Integrity(number=int(block.number), 
+                                     previous_hash=block.previous_hash, 
+                                     data=block.data, 
+                                     nonce=block.nonce))
+        
+    return integritychain
+
+
+def sync_blockchain(integritychain):
+    blockchain_sql = Blockchain.query.delete()
+
+    for integrity in integritychain.chain:
+        block = Blockchain(number=int(integrity.number), 
+                   hash=integrity.hash(), 
+                   previous_hash=integrity.previous_hash, 
+                   data=integrity.data, 
+                   nonce=integrity.nonce)
+
+        db.session.add(block)
+    
+    db.session.commit()
+
+
+# def test_blockchain():
+#     blockchain_sql = Blockchain.query.delete()
+#     db.session.commit()
+#     # blockchain = IntegrityChain()
+#     # database = ["First Project", "AI Projet", "ML Project", "END"]
+    
+#     # num = 0
+#     # for data in database:
+#     #     num += 1
+#     #     blockchain.mine(Integrity(data=data, number=num))
+    
+#     # sync_blockchain(blockchain)
+
+## Routes ##
 
 @app.route('/')
 def index():
