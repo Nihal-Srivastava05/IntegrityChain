@@ -1,6 +1,6 @@
-from flask import Flask, render_template, redirect, url_for
+from flask import Flask, render_template, redirect, url_for, request, flash
 from flask_sqlalchemy import SQLAlchemy
-from flask_login import UserMixin, login_user, LoginManager, login_required, logout_user
+from flask_login import UserMixin, login_user, LoginManager, login_required, logout_user, current_user
 
 from flask_wtf import FlaskForm
 from wtforms import StringField, PasswordField, SubmitField
@@ -20,6 +20,8 @@ bcrypt = Bcrypt(app)
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
+
+class ProjectExistException(Exception): pass
 
 ## Models ## 
 
@@ -62,7 +64,30 @@ class LoginForm(FlaskForm):
 
     submit = SubmitField('Login')
 
+class AddProjectForm(FlaskForm):
+    title = StringField("Title", validators=[InputRequired(), Length(min=5, max=30)])
+    description = StringField("Title", validators=[InputRequired(), Length(min=5, max=50)])
+    submit = SubmitField('Add')
+
 ## DB Tools ##
+
+def add_project(author, title, description):
+    blockchain = get_blockchain()
+    if not does_project_exists(blockchain, title):
+        raise ProjectExistException("Project already exist")
+    
+    number = len(blockchain.chain) + 1
+    data = "%s->%s->%s" %(author, title, description)
+    blockchain.mine(Integrity(number=number, data=data))
+    sync_blockchain(blockchain)
+
+def does_project_exists(blockchain, title):
+    for block in blockchain.chain:
+        data = block.data.split("->") # author->title->description
+        if title == data[1]:
+            return False
+        
+    return True
 
 def get_blockchain():
     integritychain = IntegrityChain()
@@ -75,9 +100,9 @@ def get_blockchain():
         
     return integritychain
 
-
 def sync_blockchain(integritychain):
     blockchain_sql = Blockchain.query.delete()
+    db.session.commit()
 
     for integrity in integritychain.chain:
         block = Blockchain(number=int(integrity.number), 
@@ -90,25 +115,28 @@ def sync_blockchain(integritychain):
     
     db.session.commit()
 
-
-# def test_blockchain():
-#     blockchain_sql = Blockchain.query.delete()
-#     db.session.commit()
-#     # blockchain = IntegrityChain()
-#     # database = ["First Project", "AI Projet", "ML Project", "END"]
-    
-#     # num = 0
-#     # for data in database:
-#     #     num += 1
-#     #     blockchain.mine(Integrity(data=data, number=num))
-    
-#     # sync_blockchain(blockchain)
-
-## Routes ##
-
 @app.route('/')
 def index():
     return render_template('index.html')
+
+@app.route('/transaction', methods=["GET", "POST"])
+@login_required
+def transaction():
+    form = AddProjectForm()
+
+    if form.validate_on_submit():
+        user_id = current_user.get_id()
+        author = User.query.filter_by(id=user_id).first().username
+        title = form.title.data
+        description = form.description.data
+        try:
+            add_project(author=author, title=title, description=description)
+            flash("Project added", 'success')
+        except Exception as e:
+            flash(str(e), 'danger')
+        return redirect(url_for('transaction'))
+
+    return render_template('transaction.html', form=form)
 
 @app.route('/dashboard', methods=["GET", "POST"])
 @login_required
