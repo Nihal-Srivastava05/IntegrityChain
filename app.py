@@ -9,6 +9,9 @@ from wtforms.validators import InputRequired, Length, ValidationError
 from flask_bcrypt import Bcrypt
 from integritychain import Integrity, IntegrityChain
 
+from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_similarity
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret-key-123'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
@@ -20,6 +23,8 @@ bcrypt = Bcrypt(app)
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
+
+bert_model = SentenceTransformer('distilbert-base-nli-mean-tokens')
 
 class ProjectExistException(Exception): pass
 
@@ -82,15 +87,19 @@ def add_project(author, title, description):
     sync_blockchain(blockchain)
 
 def does_project_exists(blockchain, title):
+    encoded_title = bert_model.encode([title])
     for block in blockchain.chain:
         data = block.data.split("->") # author->title->description
-        if title == data[1]:
+        encoded = bert_model.encode([data[1]])
+        sim = cosine_similarity(encoded_title, encoded)
+        print(title, data[1], sim)
+        if sim > 0.70:
             return False
         
     return True
 
 def get_blockchain():
-    integritychain = IntegrityChain()
+    integritychain = IntegrityChain(chain=[])
     blockchain_sql = Blockchain.query.all()
     for block in blockchain_sql:
         integritychain.add(Integrity(number=int(block.number), 
@@ -123,7 +132,12 @@ def index():
 @login_required
 def transaction():
     form = AddProjectForm()
-
+    blockchain = get_blockchain()
+    projects = []
+    for block in blockchain.chain:
+        data = block.data.split("->")
+        projects.append(data)
+    
     if form.validate_on_submit():
         user_id = current_user.get_id()
         author = User.query.filter_by(id=user_id).first().username
@@ -134,9 +148,10 @@ def transaction():
             flash("Project added", 'success')
         except Exception as e:
             flash(str(e), 'danger')
+            
         return redirect(url_for('transaction'))
 
-    return render_template('transaction.html', form=form)
+    return render_template('transaction.html', form=form, projects=projects)
 
 @app.route('/dashboard', methods=["GET", "POST"])
 @login_required

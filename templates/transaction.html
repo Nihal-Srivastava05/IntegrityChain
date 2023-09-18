@@ -6,8 +6,18 @@
     <title>Add Project</title>
 </head>
 <body>
-    <h1>Login</h1>
-  
+    <h1>Transactions</h1>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <ul class=flashes>
+        {% for message in messages %}
+          <li>{{ message }}</li>
+        {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+
+    <h3>Add new transaction: </h3>
     <form method="POST" action="">
       {{ form.hidden_tag() }} 
       <!-- {{ form.username }}  -->
@@ -15,5 +25,23 @@
       {{ form.description }}
       {{ form.submit }}
     </form>
+
+    <h3>List of all trasactions: </h3>
+    <table>
+    <tr>
+      <th>Author</th>
+      <th>Title</th>
+      <th>Description</th>
+    </tr>
+    {% for project in projects %}
+    <tr>
+      <td>{{ project[0] }}</td>
+      <td>{{ project[1] }}</td>
+      <td>{{ project[2] }}</td>
+    </tr>
+    {% endfor %}
+    </table>
+
+    <a href="{{url_for('dashboard')}}">Go to dashboard</a>
 </body>
 </html>
