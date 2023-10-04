@@ -12,6 +12,8 @@ from integritychain import Integrity, IntegrityChain
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 
+import datetime
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret-key-123'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
@@ -71,7 +73,7 @@ class LoginForm(FlaskForm):
 
 class AddProjectForm(FlaskForm):
     title = StringField("Title", validators=[InputRequired(), Length(min=5, max=30)])
-    description = StringField("Title", validators=[InputRequired(), Length(min=5, max=50)])
+    description = StringField("Title", validators=[InputRequired(), Length(min=5, max=200)])
     submit = SubmitField('Add')
 
 ## DB Tools ##
@@ -82,7 +84,9 @@ def add_project(author, title, description):
         raise ProjectExistException("Project already exist")
     
     number = len(blockchain.chain) + 1
-    data = "%s->%s->%s" %(author, title, description)
+    timestamp = datetime.datetime.now().isoformat()
+    data = "%s->%s->%s->%s" %(author, title, description, timestamp)
+    
     blockchain.mine(Integrity(number=number, data=data))
     sync_blockchain(blockchain)
 
@@ -92,7 +96,6 @@ def does_project_exists(blockchain, title):
         data = block.data.split("->") # author->title->description
         encoded = bert_model.encode([data[1]])
         sim = cosine_similarity(encoded_title, encoded)
-        print(title, data[1], sim)
         if sim > 0.70:
             return False
         
@@ -156,7 +159,16 @@ def transaction():
 @app.route('/dashboard', methods=["GET", "POST"])
 @login_required
 def dashboard():
-    return render_template('dashboard.html')
+    blockchain = get_blockchain()
+    projects = []
+    user_id = current_user.get_id()
+    user_name = User.query.filter_by(id=user_id).first().username
+    for block in blockchain.chain:
+        data = block.data.split("->")
+        if data[0] == user_name:
+            projects.append(data)
+
+    return render_template('dashboard.html', projects=projects)
 
 @app.route('/login', methods=["GET", "POST"])
 def login():

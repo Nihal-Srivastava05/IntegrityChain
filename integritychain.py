@@ -55,10 +55,8 @@ class IntegrityChain():
         
     def isValid(self):
         for i in range(1, len(self.chain)):
-            print(self.chain[i].data)
             _previous  = self.chain[i].previous_hash
             _current = self.chain[i-1].hash()
-            print(_previous, _current)
             if _previous != _current and _current[:self.difficulty] != "0" * self.difficulty:
                 return False
 
