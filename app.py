@@ -1,9 +1,10 @@
 from flask import Flask, render_template, redirect, url_for, request, flash
 from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
 from flask_login import UserMixin, login_user, LoginManager, login_required, logout_user, current_user
 
 from flask_wtf import FlaskForm
-from wtforms import StringField, PasswordField, SubmitField
+from wtforms import StringField, PasswordField, SubmitField, DecimalRangeField, HiddenField
 from wtforms.validators import InputRequired, Length, ValidationError
 
 from flask_bcrypt import Bcrypt
@@ -13,6 +14,7 @@ from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 
 import datetime
+import decimal
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret-key-123'
@@ -25,6 +27,8 @@ bcrypt = Bcrypt(app)
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
+
+migrate = Migrate(app, db)
 
 bert_model = SentenceTransformer('distilbert-base-nli-mean-tokens')
 
@@ -43,6 +47,12 @@ class Blockchain(db.Model):
     previous_hash = db.Column(db.String(80), nullable=False)
     data = db.Column(db.String(80), nullable=False)
     nonce = db.Column(db.Integer)
+
+class Votes(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(50), nullable=False)
+    total_sum = db.Column(db.Float)
+    number_votes = db.Column(db.Integer)
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -70,6 +80,15 @@ class LoginForm(FlaskForm):
                              InputRequired(), Length(min=8, max=20)], render_kw={"placeholder": "Password"})
 
     submit = SubmitField('Login')
+
+class FindProjectForm(FlaskForm):
+    query = StringField("Search", validators=[InputRequired(), Length(min=5, max=50)])
+    submit1 = SubmitField("Search")
+
+class VoteProjectForm(FlaskForm):
+    vote = DecimalRangeField('Vote', default=0)
+    title = HiddenField("Title")
+    submit2 = SubmitField("Submit")
 
 class AddProjectForm(FlaskForm):
     title = StringField("Title", validators=[InputRequired(), Length(min=5, max=30)])
@@ -167,8 +186,46 @@ def dashboard():
         data = block.data.split("->")
         if data[0] == user_name:
             projects.append(data)
+        
+    form = FindProjectForm()
+    vote_form = VoteProjectForm()
 
-    return render_template('dashboard.html', projects=projects)
+    search_results = []
+    if form.submit1.data and form.validate():
+        query = form.query.data
+        blockchain = get_blockchain()
+        encoded_title = bert_model.encode([query])
+        for block in blockchain.chain:
+            data = block.data.split("->")
+            encoded = bert_model.encode([data[1]])
+            sim = cosine_similarity(encoded_title, encoded)
+            if sim > 0.60:
+                votes = db.session.query(Votes).filter_by(title=data[1]).first()
+                score = 0
+                if votes is not None:
+                    score = votes.total_sum / votes.number_votes
+                search_results.append(data + [score])
+
+    if vote_form.submit2.data:
+        title = vote_form.title.data
+        vote = vote_form.vote.data
+
+        res = db.session.query(Votes).filter_by(title=title).first()
+        if res is None:
+            new_vote = Votes(title=title, total_sum=vote, number_votes=1)
+            db.session.add(new_vote)
+        else:
+            res.total_sum += float(vote)
+            res.number_votes += 1
+        
+        db.session.commit()
+
+    # if vote_form.submit2.data and vote_form.validate():
+    #     title = vote_form.title.data
+    #     vote = vote_form.vote.data
+    #     print(title, vote)
+
+    return render_template('dashboard.html', form=form, vote_form=vote_form, projects=projects, search_results=search_results)
 
 @app.route('/login', methods=["GET", "POST"])
 def login():

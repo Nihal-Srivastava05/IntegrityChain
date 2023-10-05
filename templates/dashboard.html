@@ -26,6 +26,34 @@
     </table>
 
     <h3>Search for other projects: </h3>
+    <form method="POST" action="{{ url_for('dashboard') }}">
+      {{ form.hidden_tag() }} 
+      {{ form.query(class_="form-control form-control-lg", placeholder="Enter text") }} </br>
+      {{ form.submit1(class_="btn btn-success") }}
+    </form>
+    
+    <form method="POST" action="{{ url_for('dashboard') }}">
+      <table class="table table-striped">
+        <tr>
+          <th>Author</th>
+          <th>Title</th>
+          <th>Description</th>
+          <th>Timestamp</th>
+          <th>Score</th>
+          <th>Vote</th>
+        </tr>
+        {% for result in search_results %}
+        <tr>
+          <td>{{ result[0] }}</td>
+          <td>{{ result[1] }}</td>  
+          <td>{{ result[2] }}</td>
+          <td>{{ result[3] }}</td>
+          <td>{{ result[4] }}</td>
+          <td>{{ vote_form.vote(min=0, max=10)}} {{vote_form.title(value=result[1])}} {{ vote_form.submit2(class_="btn btn-success") }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </form>
 
     <h5>You are logged in!</h5>
 
